@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Versiyon Adı (örn: 1.0.1)"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etVersionName"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="1.0.0"
+        android:inputType="text" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Versiyon Kodu (sayı olmalı)"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etVersionCode"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="1"
+        android:inputType="number" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Güncelleme Mesajı"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etUpdateMessage"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:hint="Yeni özellikler eklendi..."
+        android:inputType="textMultiLine"
+        android:gravity="top" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Google Drive İndirme Linki"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etDownloadLink"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="https://drive.google.com/..."
+        android:inputType="textUri" />
+
+    <CheckBox
+        android:id="@+id/cbForceUpdate"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Zorunlu güncelleme (kullanıcı atlayamaz)"
+        android:textSize="14sp" />
+
+</LinearLayout>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0F0F1A">
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvHints"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="8dp" />
+
+    <TextView
+        android:id="@+id/tvNoHints"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:text="Henüz ipucu yok\n\nAcil durumu ilan eden kişi\nipucu gönderebilir."
+        android:textAlignment="center"
+        android:textColor="#888888"
+        android:textSize="16sp" />
+
+</FrameLayout>
