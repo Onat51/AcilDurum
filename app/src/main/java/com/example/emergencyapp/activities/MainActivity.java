@@ -36,14 +36,21 @@ import com.google.android.gms.location.Priority;
 
 public class MainActivity extends AppCompatActivity implements EmergencyButton.EmergencyButtonListener {
 
+    private static final int REQUEST_ENTER_CODE = 200;
+
     private EmergencyButton emergencyButton;
     private TextView tvUserName;
     private TextView tvLongPressHint;
     private FrameLayout progressOverlay;
     private LinearLayout btnChat;
     private LinearLayout btnLocation;
-    private LinearLayout btnHistory;
+    private LinearLayout btnContacts;
+    private LinearLayout btnEnterCode;
     private LinearLayout statusIndicator;
+
+    // Pending custom emergency (from code entry)
+    private String pendingCustomTitle;
+    private String pendingCustomDescription;
 
     private PreferenceManager prefManager;
     private FusedLocationProviderClient fusedLocationClient;
@@ -65,7 +72,6 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
         startEmergencyListenerService();
         startLocationService();
 
-        // Güncelleme kontrolü
         UpdateChecker.checkForUpdate(this, null);
     }
 
@@ -76,40 +82,34 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
         progressOverlay = findViewById(R.id.progressOverlay);
         btnChat = findViewById(R.id.btnChat);
         btnLocation = findViewById(R.id.btnLocation);
-        btnHistory = findViewById(R.id.btnHistory);
+        btnContacts = findViewById(R.id.btnContacts);
+        btnEnterCode = findViewById(R.id.btnEnterCode);
         statusIndicator = findViewById(R.id.statusIndicator);
 
         tvUserName.setText(prefManager.getUserName());
         emergencyButton.setListener(this);
 
-        // Status indicator'a uzun basınca admin girişi
         statusIndicator.setOnLongClickListener(v -> {
             showAdminLoginDialog();
             return true;
         });
 
-        // Eğer zaten admin ise, status indicator'a tıklayınca admin paneli
         statusIndicator.setOnClickListener(v -> {
             if (prefManager.isAdmin()) {
                 startActivity(new Intent(this, AdminActivity.class));
             }
         });
 
-        // Admin ise göstergeyi değiştir
         updateAdminIndicator();
     }
 
     private void updateAdminIndicator() {
         if (prefManager.isAdmin()) {
-            TextView tvStatus = statusIndicator.findViewById(android.R.id.text1);
-            if (tvStatus == null) {
-                // Layout'taki text view'u bul
-                for (int i = 0; i < statusIndicator.getChildCount(); i++) {
-                    View child = statusIndicator.getChildAt(i);
-                    if (child instanceof TextView) {
-                        ((TextView) child).setText("Admin");
-                        break;
-                    }
+            for (int i = 0; i < statusIndicator.getChildCount(); i++) {
+                View child = statusIndicator.getChildAt(i);
+                if (child instanceof TextView) {
+                    ((TextView) child).setText("Admin");
+                    break;
                 }
             }
         }
@@ -122,7 +122,6 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
 
         new AlertDialog.Builder(this)
                 .setTitle("🔐 Yönetici Girişi")
-                .setMessage("Yönetici paneline erişmek için şifreyi girin:")
                 .setView(input)
                 .setPositiveButton("Giriş", (dialog, which) -> {
                     String password = input.getText().toString();
@@ -145,17 +144,12 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
     }
 
     private void setupBottomButtons() {
-        btnChat.setOnClickListener(v -> {
-            startActivity(new Intent(this, ChatActivity.class));
-        });
+        btnChat.setOnClickListener(v -> startActivity(new Intent(this, ChatActivity.class)));
 
         btnLocation.setOnClickListener(v -> {
             if (currentLocation != null) {
-                String message = String.format(
-                        "Konumunuz:\nEnlem: %.6f\nBoylam: %.6f",
-                        currentLocation.getLatitude(),
-                        currentLocation.getLongitude()
-                );
+                String message = String.format("Konumunuz:\nEnlem: %.6f\nBoylam: %.6f",
+                        currentLocation.getLatitude(), currentLocation.getLongitude());
                 new AlertDialog.Builder(this)
                         .setTitle("📍 Mevcut Konum")
                         .setMessage(message)
@@ -166,13 +160,27 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
             }
         });
 
-        btnHistory.setOnClickListener(v -> {
-            if (prefManager.isAdmin()) {
-                startActivity(new Intent(this, AdminActivity.class));
-            } else {
-                Toast.makeText(this, "Geçmiş özelliği yakında!", Toast.LENGTH_SHORT).show();
-            }
+        btnContacts.setOnClickListener(v ->
+                startActivity(new Intent(this, ContactsActivity.class)));
+
+        btnEnterCode.setOnClickListener(v -> {
+            Intent intent = new Intent(this, EnterCodeActivity.class);
+            startActivityForResult(intent, REQUEST_ENTER_CODE);
         });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_ENTER_CODE && resultCode == RESULT_OK && data != null) {
+            pendingCustomTitle = data.getStringExtra("custom_title");
+            pendingCustomDescription = data.getStringExtra("custom_description");
+            if (pendingCustomTitle != null) {
+                Toast.makeText(this,
+                        "\"" + pendingCustomTitle + "\" acil durumu hazır. Butona basarak tetikleyin.",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void startEmergencyListenerService() {
@@ -195,13 +203,10 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
 
     private void setupLocationUpdates() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
+                != PackageManager.PERMISSION_GRANTED) return;
 
         LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-                .setMinUpdateIntervalMillis(2000)
-                .build();
+                .setMinUpdateIntervalMillis(2000).build();
 
         locationCallback = new LocationCallback() {
             @Override
@@ -230,14 +235,17 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
     public void onDirectionSelected(int direction) {
         if (direction != -1) {
             showConfirmationDialog(direction);
+        } else if (pendingCustomTitle != null) {
+            // Single tap when custom code loaded → trigger custom
+            showCustomConfirmationDialog();
         }
     }
 
     @Override
     public void onLongPressProgress(float progress) {
         if (progress > 0) {
-            int percentage = (int) (progress * 100);
-            tvLongPressHint.setText("Tam Acil Durum: %" + percentage);
+            int pct = (int) (progress * 100);
+            tvLongPressHint.setText("Tam Acil Durum: %" + pct);
             tvLongPressHint.setVisibility(View.VISIBLE);
         } else {
             tvLongPressHint.setVisibility(View.GONE);
@@ -246,13 +254,23 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
 
     private void showConfirmationDialog(int emergencyType) {
         String typeText = getEmergencyTypeText(emergencyType);
-
         new AlertDialog.Builder(this)
                 .setTitle("⚠️ Acil Durum Onayı")
-                .setMessage(typeText + "\n\nAcil durumu ilan etmek istediğinize emin misiniz?\n\nTüm kullanıcılara bildirim gidecek!")
-                .setPositiveButton("EVET, GÖNDER!", (dialog, which) -> triggerEmergency(emergencyType))
+                .setMessage(typeText + "\n\nAcil durumu ilan etmek istediğinize emin misiniz?\n\nSeçili kişilere bildirim gidecek!")
+                .setPositiveButton("EVET, GÖNDER!", (d, w) -> triggerEmergency(emergencyType))
                 .setNegativeButton("İptal", null)
                 .setCancelable(true)
+                .show();
+    }
+
+    private void showCustomConfirmationDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("⚡ Özel Acil Durum")
+                .setMessage("\"" + pendingCustomTitle + "\"\n\n" +
+                        (pendingCustomDescription != null ? pendingCustomDescription : "") +
+                        "\n\nBu acil durumu ilan etmek istiyor musunuz?")
+                .setPositiveButton("EVET, GÖNDER!", (d, w) -> triggerCustomEmergency())
+                .setNegativeButton("İptal", null)
                 .show();
     }
 
@@ -289,6 +307,35 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
         intent.putExtra("emergency_id", emergencyId);
         intent.putExtra("sender_name", userName);
         intent.putExtra("emergency_type", emergencyType);
+        intent.putExtra("latitude", currentLocation.getLatitude());
+        intent.putExtra("longitude", currentLocation.getLongitude());
+        intent.putExtra("is_sender", true);
+        startActivity(intent);
+    }
+
+    private void triggerCustomEmergency() {
+        if (currentLocation == null) {
+            Toast.makeText(this, "Konum alınamadı...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        progressOverlay.setVisibility(View.VISIBLE);
+
+        String emergencyId = FirebaseManager.getInstance().createEmergency(
+                prefManager.getUserId(), prefManager.getUserName(),
+                Constants.EMERGENCY_CUSTOM,
+                currentLocation.getLatitude(), currentLocation.getLongitude(),
+                pendingCustomTitle, pendingCustomDescription
+        );
+
+        progressOverlay.setVisibility(View.GONE);
+        pendingCustomTitle = null;
+        pendingCustomDescription = null;
+
+        Intent intent = new Intent(this, EmergencyReceivedActivity.class);
+        intent.putExtra("emergency_id", emergencyId);
+        intent.putExtra("sender_name", prefManager.getUserName());
+        intent.putExtra("emergency_type", Constants.EMERGENCY_CUSTOM);
         intent.putExtra("latitude", currentLocation.getLatitude());
         intent.putExtra("longitude", currentLocation.getLongitude());
         intent.putExtra("is_sender", true);

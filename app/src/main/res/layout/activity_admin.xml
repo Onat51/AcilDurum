@@ -6,11 +6,11 @@
     android:layout_height="match_parent"
     android:background="#0D1B2A">
 
-    <!-- Üst Bar -->
+    <!-- Top Bar -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
+        android:layout_height="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingHorizontal="8dp"
@@ -20,8 +20,8 @@
 
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_back"
             app:tint="@android:color/white" />
@@ -33,25 +33,35 @@
             android:layout_marginStart="8dp"
             android:text="🔐 Yönetici Paneli"
             android:textColor="@android:color/white"
-            android:textSize="18sp"
+            android:textSize="17sp"
             android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnAddCode"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:backgroundTint="#FF9800"
+            android:text="+ Kod Ekle"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
     </LinearLayout>
 
-    <!-- Harita -->
+    <!-- Map -->
     <org.osmdroid.views.MapView
         android:id="@+id/mapView"
         android:layout_width="match_parent"
-        android:layout_height="250dp"
+        android:layout_height="200dp"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- Bilgi Alanı -->
+    <!-- Info Bar -->
     <LinearLayout
-        android:id="@+id/infoLayout"
+        android:id="@+id/infoBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="10dp"
         android:background="#1B2838"
         app:layout_constraintTop_toBottomOf="@id/mapView">
 
@@ -67,16 +77,16 @@
                 android:layout_weight="1"
                 android:text="Toplam Kullanıcı: 0"
                 android:textColor="#4FC3F7"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
 
             <Button
                 android:id="@+id/btnRefreshUsers"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="32dp"
                 android:backgroundTint="#2196F3"
                 android:text="🔄 Yenile"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
         </LinearLayout>
 
@@ -84,47 +94,64 @@
             android:id="@+id/tvCurrentVersion"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Versiyon bilgisi yükleniyor..."
+            android:layout_marginTop="4dp"
+            android:text="Versiyon yükleniyor..."
             android:textColor="#78909C"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
 
         <Button
             android:id="@+id/btnUpdateVersion"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:layout_marginTop="8dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="6dp"
             android:backgroundTint="#FF9800"
             android:text="📤 Versiyon Güncelle"
-            android:textColor="@android:color/white" />
+            android:textColor="@android:color/white"
+            android:textSize="13sp" />
 
     </LinearLayout>
 
-    <!-- Kullanıcı Listesi Başlığı -->
-    <TextView
-        android:id="@+id/tvUsersTitle"
+    <!-- Tabs -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="12dp"
-        android:text="📍 Kullanıcı Konumları"
-        android:textColor="@android:color/white"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        app:layout_constraintTop_toBottomOf="@id/infoLayout" />
+        android:background="#1B2838"
+        app:tabTextColor="#AAAAAA"
+        app:tabSelectedTextColor="@android:color/white"
+        app:tabIndicatorColor="#FF9800"
+        app:layout_constraintTop_toBottomOf="@id/infoBar" />
 
-    <!-- Kullanıcı Listesi -->
+    <!-- Scrollable content -->
     <ScrollView
+        android:id="@+id/scrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:padding="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvUsersTitle">
+        app:layout_constraintTop_toBottomOf="@id/tabLayout">
 
         <LinearLayout
-            android:id="@+id/userListLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="vertical">
+
+            <!-- Users list -->
+            <LinearLayout
+                android:id="@+id/userListLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <!-- Custom codes list -->
+            <LinearLayout
+                android:id="@+id/codesLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
+
+        </LinearLayout>
 
     </ScrollView>
 

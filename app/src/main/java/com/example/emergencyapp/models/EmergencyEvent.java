@@ -13,6 +13,8 @@ public class EmergencyEvent {
     private long timestamp;
     private boolean isActive;
     private Map<String, LocationData> userLocations;
+    private String customTitle;       // for EMERGENCY_CUSTOM type
+    private String customDescription; // for EMERGENCY_CUSTOM type
 
     public EmergencyEvent() {
         userLocations = new HashMap<>();
@@ -32,6 +34,7 @@ public class EmergencyEvent {
     }
 
     public String getEmergencyTypeText() {
+        if (emergencyType == 99 && customTitle != null) return "⚡ " + customTitle.toUpperCase();
         switch (emergencyType) {
             case 1: return "Kaçırılıyorum 🏃";
             case 2: return "Takip Ediliyorum 👁️";
@@ -44,13 +47,17 @@ public class EmergencyEvent {
 
     public String getTTSMessage() {
         String typeText;
-        switch (emergencyType) {
-            case 1: typeText = "Kaçırılıyor"; break;
-            case 2: typeText = "Takip Ediliyor"; break;
-            case 3: typeText = "Ambulans İstiyor"; break;
-            case 4: typeText = "Hemen Orada Olmanızı İstiyor"; break;
-            case 5: typeText = "Tam Acil Durum İlan Etti"; break;
-            default: typeText = "Acil Durum"; break;
+        if (emergencyType == 99 && customTitle != null) {
+            typeText = customTitle + " durumu var";
+        } else {
+            switch (emergencyType) {
+                case 1: typeText = "Kaçırılıyor"; break;
+                case 2: typeText = "Takip Ediliyor"; break;
+                case 3: typeText = "Ambulans İstiyor"; break;
+                case 4: typeText = "Hemen Orada Olmanızı İstiyor"; break;
+                case 5: typeText = "Tam Acil Durum İlan Etti"; break;
+                default: typeText = "Acil Durum"; break;
+            }
         }
         return senderName + " " + typeText;
     }
@@ -82,4 +89,10 @@ public class EmergencyEvent {
 
     public Map<String, LocationData> getUserLocations() { return userLocations; }
     public void setUserLocations(Map<String, LocationData> userLocations) { this.userLocations = userLocations; }
+
+    public String getCustomTitle() { return customTitle; }
+    public void setCustomTitle(String customTitle) { this.customTitle = customTitle; }
+
+    public String getCustomDescription() { return customDescription; }
+    public void setCustomDescription(String customDescription) { this.customDescription = customDescription; }
 }

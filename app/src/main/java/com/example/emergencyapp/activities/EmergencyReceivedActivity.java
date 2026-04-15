@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -57,24 +56,23 @@ import java.util.List;
 import java.util.Map;
 
 public class EmergencyReceivedActivity extends AppCompatActivity {
-    private static final String TAG = "EmergencyReceived";
 
-    // Views
     private TextView tvEmergencyType;
     private TextView tvSenderName;
+    private TextView tvCustomDesc;
     private MapView mapView;
     private TabLayout tabLayout;
     private ViewPager2 viewPager;
     private Button btnMuteAlarm;
     private Button btnCancelEmergency;
-    private LinearLayout controlButtons;
 
-    // Data
     private String emergencyId;
     private String senderName;
     private int emergencyType;
     private double targetLat, targetLng;
     private boolean isSender;
+    private String customTitle;
+    private String customDescription;
 
     private PreferenceManager prefManager;
     private AlertManager alertManager;
@@ -91,22 +89,20 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Wake up screen and show on lock screen
         wakeUpScreen();
-
         setContentView(R.layout.activity_emergency_received);
 
-        // Get intent data
-        emergencyId = getIntent().getStringExtra("emergency_id");
-        senderName = getIntent().getStringExtra("sender_name");
-        emergencyType = getIntent().getIntExtra("emergency_type", 0);
-        targetLat = getIntent().getDoubleExtra("latitude", 0);
-        targetLng = getIntent().getDoubleExtra("longitude", 0);
-        isSender = getIntent().getBooleanExtra("is_sender", false);
+        emergencyId      = getIntent().getStringExtra("emergency_id");
+        senderName       = getIntent().getStringExtra("sender_name");
+        emergencyType    = getIntent().getIntExtra("emergency_type", 0);
+        targetLat        = getIntent().getDoubleExtra("latitude", 0);
+        targetLng        = getIntent().getDoubleExtra("longitude", 0);
+        isSender         = getIntent().getBooleanExtra("is_sender", false);
+        customTitle       = getIntent().getStringExtra("custom_title");
+        customDescription = getIntent().getStringExtra("custom_description");
 
-        prefManager = new PreferenceManager(this);
-        alertManager = new AlertManager(this);
+        prefManager       = new PreferenceManager(this);
+        alertManager      = new AlertManager(this);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         initViews();
@@ -116,10 +112,7 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
         listenToLocations();
         listenToEmergencyStatus();
 
-        // Start alarm if not sender
-        if (!isSender) {
-            startEmergencyAlert();
-        }
+        if (!isSender) startEmergencyAlert();
     }
 
     private void wakeUpScreen() {
@@ -130,36 +123,41 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
             getWindow().addFlags(
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
-                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            );
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
-
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        PowerManager.WakeLock wakeLock = pm.newWakeLock(
-                PowerManager.FULL_WAKE_LOCK |
-                        PowerManager.ACQUIRE_CAUSES_WAKEUP |
-                        PowerManager.ON_AFTER_RELEASE,
-                "EmergencyApp:WakeLock"
-        );
-        wakeLock.acquire(60 * 1000L);
+        PowerManager.WakeLock wl = pm.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
+                "EmergencyApp:WakeLock");
+        wl.acquire(60 * 1000L);
     }
 
     private void initViews() {
-        tvEmergencyType = findViewById(R.id.tvEmergencyType);
-        tvSenderName = findViewById(R.id.tvSenderName);
-        mapView = findViewById(R.id.mapView);
-        tabLayout = findViewById(R.id.tabLayout);
-        viewPager = findViewById(R.id.viewPager);
-        btnMuteAlarm = findViewById(R.id.btnMuteAlarm);
+        tvEmergencyType  = findViewById(R.id.tvEmergencyType);
+        tvSenderName     = findViewById(R.id.tvSenderName);
+        tvCustomDesc     = findViewById(R.id.tvCustomDesc);
+        mapView          = findViewById(R.id.mapView);
+        tabLayout        = findViewById(R.id.tabLayout);
+        viewPager        = findViewById(R.id.viewPager);
+        btnMuteAlarm     = findViewById(R.id.btnMuteAlarm);
         btnCancelEmergency = findViewById(R.id.btnCancelEmergency);
-        controlButtons = findViewById(R.id.controlButtons);
 
-        // Set emergency info
         tvSenderName.setText(senderName);
-        tvEmergencyType.setText(getEmergencyTypeText(emergencyType));
-        setEmergencyTypeColor();
 
-        // Show cancel button only for sender
+        // Set type label — custom or built-in
+        if (emergencyType == Constants.EMERGENCY_CUSTOM && customTitle != null) {
+            tvEmergencyType.setText("⚡ " + customTitle.toUpperCase());
+            tvEmergencyType.setBackgroundColor(Color.parseColor("#7B1FA2"));
+            if (customDescription != null && !customDescription.isEmpty() && tvCustomDesc != null) {
+                tvCustomDesc.setText(customDescription);
+                tvCustomDesc.setVisibility(View.VISIBLE);
+            }
+        } else {
+            tvEmergencyType.setText(getEmergencyTypeText(emergencyType));
+            setEmergencyTypeColor();
+            if (tvCustomDesc != null) tvCustomDesc.setVisibility(View.GONE);
+        }
+
         btnCancelEmergency.setVisibility(isSender ? View.VISIBLE : View.GONE);
 
         btnMuteAlarm.setOnClickListener(v -> {
@@ -173,11 +171,11 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
 
     private String getEmergencyTypeText(int type) {
         switch (type) {
-            case Constants.EMERGENCY_KIDNAPPING: return "🏃 KAÇIRILIYORUM";
-            case Constants.EMERGENCY_BEING_FOLLOWED: return "👁️ TAKİP EDİLİYORUM";
-            case Constants.EMERGENCY_AMBULANCE: return "🚑 AMBULANS/KAZA";
-            case Constants.EMERGENCY_COME_HERE: return "📍 HEMEN BURAYA GELİN";
-            case Constants.EMERGENCY_FULL: return "⚠️ TAM ACİL DURUM";
+            case Constants.EMERGENCY_KIDNAPPING:      return "🏃 KAÇIRILIYORUM";
+            case Constants.EMERGENCY_BEING_FOLLOWED:  return "👁️ TAKİP EDİLİYORUM";
+            case Constants.EMERGENCY_AMBULANCE:       return "🚑 AMBULANS/KAZA";
+            case Constants.EMERGENCY_COME_HERE:       return "📍 HEMEN BURAYA GELİN";
+            case Constants.EMERGENCY_FULL:            return "⚠️ TAM ACİL DURUM";
             default: return "ACİL DURUM";
         }
     }
@@ -185,23 +183,12 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
     private void setEmergencyTypeColor() {
         int color;
         switch (emergencyType) {
-            case Constants.EMERGENCY_KIDNAPPING:
-                color = Color.parseColor("#FF5722");
-                break;
-            case Constants.EMERGENCY_BEING_FOLLOWED:
-                color = Color.parseColor("#9C27B0");
-                break;
-            case Constants.EMERGENCY_AMBULANCE:
-                color = Color.parseColor("#4CAF50");
-                break;
-            case Constants.EMERGENCY_COME_HERE:
-                color = Color.parseColor("#2196F3");
-                break;
-            case Constants.EMERGENCY_FULL:
-                color = Color.parseColor("#FF1744");
-                break;
-            default:
-                color = Color.RED;
+            case Constants.EMERGENCY_KIDNAPPING:     color = Color.parseColor("#FF5722"); break;
+            case Constants.EMERGENCY_BEING_FOLLOWED: color = Color.parseColor("#9C27B0"); break;
+            case Constants.EMERGENCY_AMBULANCE:      color = Color.parseColor("#4CAF50"); break;
+            case Constants.EMERGENCY_COME_HERE:      color = Color.parseColor("#2196F3"); break;
+            case Constants.EMERGENCY_FULL:           color = Color.parseColor("#FF1744"); break;
+            default: color = Color.RED;
         }
         tvEmergencyType.setBackgroundColor(color);
     }
@@ -211,92 +198,69 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
         mapView.setTileSource(TileSourceFactory.MAPNIK);
         mapView.setMultiTouchControls(true);
 
-        IMapController mapController = mapView.getController();
-        mapController.setZoom(15.0);
+        IMapController mc = mapView.getController();
+        mc.setZoom(15.0);
 
-        // Add target marker
-        GeoPoint targetPoint = new GeoPoint(targetLat, targetLng);
+        GeoPoint target = new GeoPoint(targetLat, targetLng);
         targetMarker = new Marker(mapView);
-        targetMarker.setPosition(targetPoint);
+        targetMarker.setPosition(target);
         targetMarker.setTitle(senderName + " - Acil Durum Konumu");
         targetMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
         mapView.getOverlays().add(targetMarker);
-
-        mapController.setCenter(targetPoint);
+        mc.setCenter(target);
     }
 
     private void setupTabs() {
         TabPagerAdapter adapter = new TabPagerAdapter(this, emergencyId, isSender);
         viewPager.setAdapter(adapter);
-
         new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
             switch (position) {
-                case 0:
-                    tab.setText("Harita");
-                    break;
-                case 1:
-                    tab.setText("Mesajlar");
-                    break;
-                case 2:
-                    tab.setText("İpuçları");
-                    break;
+                case 0: tab.setText("Harita"); break;
+                case 1: tab.setText("Mesajlar"); break;
+                case 2: tab.setText("İpuçları"); break;
             }
         }).attach();
     }
 
     private void startLocationUpdates() {
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000)
-                .setMinUpdateIntervalMillis(1000)
-                .build();
+        LocationRequest req = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000)
+                .setMinUpdateIntervalMillis(1000).build();
 
         locationCallback = new LocationCallback() {
             @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                if (locationResult.getLastLocation() != null) {
-                    double lat = locationResult.getLastLocation().getLatitude();
-                    double lng = locationResult.getLastLocation().getLongitude();
-
-                    // Update location to Firebase
+            public void onLocationResult(@NonNull LocationResult r) {
+                if (r.getLastLocation() != null) {
                     FirebaseManager.getInstance().updateEmergencyLocation(
                             emergencyId,
                             prefManager.getUserId(),
                             prefManager.getUserName(),
-                            lat, lng
-                    );
+                            r.getLastLocation().getLatitude(),
+                            r.getLastLocation().getLongitude());
                 }
             }
         };
 
         try {
-            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, getMainLooper());
-        } catch (SecurityException e) {
-            e.printStackTrace();
-        }
+            fusedLocationClient.requestLocationUpdates(req, locationCallback, getMainLooper());
+        } catch (SecurityException e) { e.printStackTrace(); }
     }
 
     private void listenToLocations() {
         locationListener = new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
+            @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
                 for (DataSnapshot child : snapshot.getChildren()) {
-                    LocationData location = child.getValue(LocationData.class);
-                    if (location != null) {
-                        updateUserMarker(location);
-                    }
+                    LocationData loc = child.getValue(LocationData.class);
+                    if (loc != null) updateUserMarker(loc);
                 }
                 updateRouteLine();
             }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
+            @Override public void onCancelled(@NonNull DatabaseError error) {}
         };
-
         FirebaseManager.getInstance().listenToEmergencyLocations(emergencyId, locationListener);
     }
 
     private void updateUserMarker(LocationData location) {
-        GeoPoint point = new GeoPoint(location.getLatitude(), location.getLongitude());
-
+        GeoPoint pt = new GeoPoint(location.getLatitude(), location.getLongitude());
         Marker marker = userMarkers.get(location.getUserId());
         if (marker == null) {
             marker = new Marker(mapView);
@@ -304,27 +268,22 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
             mapView.getOverlays().add(marker);
             userMarkers.put(location.getUserId(), marker);
         }
-
-        marker.setPosition(point);
+        marker.setPosition(pt);
         marker.setTitle(location.getUserName());
         mapView.invalidate();
     }
 
     private void updateRouteLine() {
-        // Simple line to target - for full navigation, integrate with routing API
-        if (routeLine != null) {
-            mapView.getOverlays().remove(routeLine);
-        }
-
+        if (routeLine != null) mapView.getOverlays().remove(routeLine);
         Marker myMarker = userMarkers.get(prefManager.getUserId());
         if (myMarker != null && targetMarker != null) {
             routeLine = new Polyline();
-            List<GeoPoint> points = new ArrayList<>();
-            points.add(myMarker.getPosition());
-            points.add(targetMarker.getPosition());
-            routeLine.setPoints(points);
+            List<GeoPoint> pts = new ArrayList<>();
+            pts.add(myMarker.getPosition());
+            pts.add(targetMarker.getPosition());
+            routeLine.setPoints(pts);
             routeLine.setColor(Color.BLUE);
-            routeLine.setWidth(5f);
+            routeLine.setWidth(4f);
             mapView.getOverlays().add(routeLine);
             mapView.invalidate();
         }
@@ -332,26 +291,18 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
 
     private void listenToEmergencyStatus() {
         emergencyListener = new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
+            @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
                 EmergencyEvent event = snapshot.getValue(EmergencyEvent.class);
                 if (event == null || !event.isActive()) {
-                    // Emergency cancelled
                     alertManager.stopAlert();
-                    Toast.makeText(EmergencyReceivedActivity.this,
-                            "Acil durum iptal edildi", Toast.LENGTH_LONG).show();
+                    Toast.makeText(EmergencyReceivedActivity.this, "Acil durum iptal edildi", Toast.LENGTH_LONG).show();
                     finish();
-                } else {
-                    // Update target location if it changed
-                    if (targetMarker != null) {
-                        targetMarker.setPosition(new GeoPoint(event.getLatitude(), event.getLongitude()));
-                        mapView.invalidate();
-                    }
+                } else if (targetMarker != null) {
+                    targetMarker.setPosition(new GeoPoint(event.getLatitude(), event.getLongitude()));
+                    mapView.invalidate();
                 }
             }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
+            @Override public void onCancelled(@NonNull DatabaseError error) {}
         };
 
         FirebaseManager.getInstance().getDatabase()
@@ -363,7 +314,7 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
         EmergencyEvent event = new EmergencyEvent();
         event.setSenderName(senderName);
         event.setEmergencyType(emergencyType);
-
+        if (customTitle != null) event.setCustomTitle(customTitle);
         alertManager.startEmergencyAlert(event.getTTSMessage(), emergencyType);
     }
 
@@ -379,51 +330,31 @@ public class EmergencyReceivedActivity extends AppCompatActivity {
                 .show();
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (mapView != null) {
-            mapView.onResume();
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (mapView != null) {
-            mapView.onPause();
-        }
-    }
+    @Override protected void onResume() { super.onResume(); if (mapView != null) mapView.onResume(); }
+    @Override protected void onPause() { super.onPause(); if (mapView != null) mapView.onPause(); }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         alertManager.release();
-
-        if (fusedLocationClient != null && locationCallback != null) {
+        if (fusedLocationClient != null && locationCallback != null)
             fusedLocationClient.removeLocationUpdates(locationCallback);
-        }
-
-        if (locationListener != null) {
+        if (locationListener != null)
             FirebaseManager.getInstance().getDatabase()
                     .child(Constants.PATH_EMERGENCIES).child(emergencyId)
                     .child("userLocations").removeEventListener(locationListener);
-        }
-
-        if (emergencyListener != null) {
+        if (emergencyListener != null)
             FirebaseManager.getInstance().getDatabase()
                     .child(Constants.PATH_ACTIVE_EMERGENCY)
                     .removeEventListener(emergencyListener);
-        }
     }
 
     @Override
     public void onBackPressed() {
-        // Prevent accidental back press during emergency
         new AlertDialog.Builder(this)
                 .setTitle("Uyarı")
                 .setMessage("Acil durum devam ediyor. Çıkmak istediğinize emin misiniz?")
-                .setPositiveButton("Çık", (dialog, which) -> super.onBackPressed())
+                .setPositiveButton("Çık", (d, w) -> super.onBackPressed())
                 .setNegativeButton("Kal", null)
                 .show();
     }

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Gizli Kod (kullanıcının gireceği)"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etCode"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="örn: elma, kırmızı, x123"
+        android:inputType="text"
+        android:textColor="#212121" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Acil Durum Başlığı"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etTitle"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="örn: Kavga Var, Şiddet Var"
+        android:inputType="textCapSentences"
+        android:textColor="#212121" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Açıklama (isteğe bağlı)"
+        android:textSize="12sp"
+        android:textColor="#666666" />
+
+    <EditText
+        android:id="@+id/etDesc"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:hint="Detaylı açıklama..."
+        android:inputType="textMultiLine"
+        android:gravity="top"
+        android:textColor="#212121" />
+
+</LinearLayout>

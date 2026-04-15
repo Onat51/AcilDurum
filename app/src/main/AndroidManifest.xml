@@ -29,6 +29,8 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
+        <!-- ── Activities ──────────────────────────────────────────────────── -->
+
         <activity
             android:name=".activities.SplashActivity"
             android:exported="true"
@@ -65,7 +67,24 @@
             android:name=".activities.ChatActivity"
             android:exported="false" />
 
-        <!-- Services -->
+        <!-- New Activities -->
+        <activity
+            android:name=".activities.ContactsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".activities.EnterCodeActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".activities.LocationHistoryActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- ── Services ────────────────────────────────────────────────────── -->
+
         <service
             android:name=".services.LocationService"
             android:foregroundServiceType="location"

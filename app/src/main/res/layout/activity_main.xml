@@ -12,7 +12,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="16dp"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="8dp"
         android:gravity="center_vertical"
         app:layout_constraintTop_toTopOf="parent">
 
@@ -28,7 +30,7 @@
                 android:layout_height="wrap_content"
                 android:text="Merhaba,"
                 android:textColor="#78909C"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
 
             <TextView
                 android:id="@+id/tvUserName"
@@ -36,12 +38,11 @@
                 android:layout_height="wrap_content"
                 android:text="Kullanıcı"
                 android:textColor="@android:color/white"
-                android:textSize="22sp"
+                android:textSize="20sp"
                 android:textStyle="bold" />
 
         </LinearLayout>
 
-        <!-- Durum Göstergesi -->
         <LinearLayout
             android:id="@+id/statusIndicator"
             android:layout_width="wrap_content"
@@ -49,150 +50,182 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@drawable/bg_status_online"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="6dp">
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp">
 
             <View
-                android:layout_width="8dp"
-                android:layout_height="8dp"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
                 android:background="@drawable/bg_dot_green" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="5dp"
                 android:text="Aktif"
                 android:textColor="#4CAF50"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
         </LinearLayout>
 
     </LinearLayout>
 
-    <!-- Ana Buton Alanı -->
+    <!-- Ana Acil Durum Butonu -->
     <com.example.emergencyapp.utils.EmergencyButton
         android:id="@+id/emergencyButton"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintBottom_toTopOf="@id/bottomSection"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- Long Press Progress Text -->
+    <!-- Long Press Progress -->
     <TextView
         android:id="@+id/tvLongPressHint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="120dp"
-        android:padding="16dp"
+        android:layout_marginBottom="8dp"
+        android:padding="12dp"
         android:background="@drawable/bg_progress_hint"
         android:text="Tam Acil Durum: %0"
         android:textColor="#FFEB3B"
-        android:textSize="18sp"
+        android:textSize="16sp"
         android:textStyle="bold"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintBottom_toTopOf="@id/bottomSection"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- Alt Bar (Chat + Ayarlar) -->
+    <!-- Bottom Section: Kod Gir + Buttons -->
     <LinearLayout
-        android:id="@+id/bottomBar"
+        android:id="@+id/bottomSection"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="16dp"
-        android:gravity="center"
+        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- Chat Butonu -->
+        <!-- Kod Gir Butonu -->
         <LinearLayout
-            android:id="@+id/btnChat"
-            android:layout_width="0dp"
+            android:id="@+id/btnEnterCode"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="8dp"
-            android:orientation="vertical"
+            android:orientation="horizontal"
             android:gravity="center"
-            android:background="@drawable/bg_bottom_button"
-            android:padding="16dp"
+            android:background="#121E2A"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="16dp"
             android:clickable="true"
             android:focusable="true">
-
-            <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/ic_chat"
-                app:tint="#4FC3F7" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Mesajlar"
-                android:textColor="#4FC3F7"
-                android:textSize="12sp" />
-
-        </LinearLayout>
-
-        <!-- Konum Butonu -->
-        <LinearLayout
-            android:id="@+id/btnLocation"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="8dp"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/bg_bottom_button"
-            android:padding="16dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/ic_location"
-                app:tint="#81C784" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Konum"
-                android:textColor="#81C784"
-                android:textSize="12sp" />
-
-        </LinearLayout>
-
-        <!-- Geçmiş Butonu -->
-        <LinearLayout
-            android:id="@+id/btnHistory"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/bg_bottom_button"
-            android:padding="16dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/ic_history"
-                app:tint="#FFB74D" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Geçmiş"
+                android:text="🔑 Acil Durum Kodu Gir"
                 android:textColor="#FFB74D"
-                android:textSize="12sp" />
+                android:textSize="13sp" />
+
+        </LinearLayout>
+
+        <!-- 4 Alt Buton -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp"
+            android:paddingBottom="12dp"
+            android:paddingTop="4dp"
+            android:gravity="center">
+
+            <!-- Chat -->
+            <LinearLayout
+                android:id="@+id/btnChat"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/bg_bottom_button"
+                android:padding="10dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_chat"
+                    app:tint="#4FC3F7" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Mesajlar"
+                    android:textColor="#4FC3F7"
+                    android:textSize="10sp" />
+
+            </LinearLayout>
+
+            <!-- Konum -->
+            <LinearLayout
+                android:id="@+id/btnLocation"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="4dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/bg_bottom_button"
+                android:padding="10dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_location"
+                    app:tint="#81C784" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Konum"
+                    android:textColor="#81C784"
+                    android:textSize="10sp" />
+
+            </LinearLayout>
+
+            <!-- Bağlantılar -->
+            <LinearLayout
+                android:id="@+id/btnContacts"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:background="@drawable/bg_bottom_button"
+                android:padding="10dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@drawable/ic_chat"
+                    app:tint="#FFB74D" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Bağlantılar"
+                    android:textColor="#FFB74D"
+                    android:textSize="10sp" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
@@ -216,17 +249,17 @@
             android:gravity="center">
 
             <ProgressBar
-                android:layout_width="60dp"
-                android:layout_height="60dp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
                 android:indeterminateTint="#FF1744" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="12dp"
                 android:text="Acil durum gönderiliyor..."
                 android:textColor="@android:color/white"
-                android:textSize="16sp" />
+                android:textSize="15sp" />
 
         </LinearLayout>
 
