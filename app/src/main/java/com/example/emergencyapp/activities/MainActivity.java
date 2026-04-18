@@ -4,8 +4,11 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
 import android.widget.EditText;
@@ -18,6 +21,11 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
 
 import com.example.emergencyapp.FirebaseManager;
 import com.example.emergencyapp.R;
@@ -27,12 +35,18 @@ import com.example.emergencyapp.utils.Constants;
 import com.example.emergencyapp.utils.EmergencyButton;
 import com.example.emergencyapp.utils.PreferenceManager;
 import com.example.emergencyapp.utils.UpdateChecker;
+import com.example.emergencyapp.workers.ServiceWatchdogWorker;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity implements EmergencyButton.EmergencyButtonListener {
 
@@ -71,6 +85,8 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
 
         startEmergencyListenerService();
         startLocationService();
+        scheduleServiceWatchdog();
+        requestBatteryOptimizationExemption();
 
         UpdateChecker.checkForUpdate(this, null);
     }
@@ -120,27 +136,42 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         input.setHint("Yönetici şifresi");
 
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("🔐 Yönetici Girişi")
                 .setView(input)
-                .setPositiveButton("Giriş", (dialog, which) -> {
-                    String password = input.getText().toString();
-                    if (password.equals(Constants.ADMIN_PASSWORD)) {
-                        prefManager.setAdmin(true);
-                        Toast.makeText(this, "Yönetici girişi başarılı!", Toast.LENGTH_SHORT).show();
-                        updateAdminIndicator();
-                        startActivity(new Intent(this, AdminActivity.class));
-                    } else {
-                        Toast.makeText(this, "Yanlış şifre!", Toast.LENGTH_SHORT).show();
-                    }
-                })
+                .setPositiveButton("Giriş", null) // listener aşağıda override edilecek
                 .setNegativeButton("İptal", null)
-                .setNeutralButton("Çıkış Yap", (dialog, which) -> {
+                .setNeutralButton("Çıkış Yap", (d, which) -> {
                     prefManager.setAdmin(false);
                     Toast.makeText(this, "Admin oturumu kapatıldı", Toast.LENGTH_SHORT).show();
                     updateAdminIndicator();
                 })
-                .show();
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String password = input.getText().toString();
+                if (password.isEmpty()) return;
+
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                // Şifreyi Firebase'den doğrula (Constants'ta artık hardcode yok)
+                FirebaseManager.getInstance().verifyAdminPassword(password, success -> {
+                    runOnUiThread(() -> {
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                        if (success) {
+                            prefManager.setAdmin(true);
+                            Toast.makeText(this, "Yönetici girişi başarılı!", Toast.LENGTH_SHORT).show();
+                            updateAdminIndicator();
+                            dialog.dismiss();
+                            startActivity(new Intent(this, AdminActivity.class));
+                        } else {
+                            Toast.makeText(this, "Yanlış şifre!", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                });
+            });
+        });
+        dialog.show();
     }
 
     private void setupBottomButtons() {
@@ -198,6 +229,45 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
             startForegroundService(serviceIntent);
         } else {
             startService(serviceIntent);
+        }
+    }
+
+    /** WorkManager: 15 dakikada bir servislerin ayakta olup olmadığını kontrol eder */
+    private void scheduleServiceWatchdog() {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        PeriodicWorkRequest watchdogRequest =
+                new PeriodicWorkRequest.Builder(ServiceWatchdogWorker.class, 15, TimeUnit.MINUTES)
+                        .setConstraints(constraints)
+                        .addTag("service_watchdog")
+                        .build();
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "service_watchdog",
+                ExistingPeriodicWorkPolicy.KEEP,
+                watchdogRequest);
+    }
+
+    /** Pil optimizasyonundan muaf tut — kullanıcıya bir kez sor */
+    private void requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Pil Optimizasyonu")
+                        .setMessage("Acil durum alarmlarını her zaman alabilmek için uygulamanın " +
+                                "pil optimizasyonundan muaf tutulması gerekiyor.")
+                        .setPositiveButton("Ayarları Aç", (d, w) -> {
+                            Intent intent = new Intent(
+                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:" + getPackageName()));
+                            startActivity(intent);
+                        })
+                        .setNegativeButton("Şimdi Değil", null)
+                        .show();
+            }
         }
     }
 
@@ -293,12 +363,21 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
 
         progressOverlay.setVisibility(View.VISIBLE);
 
-        String oderId = prefManager.getUserId();
+        String userId = prefManager.getUserId();
         String userName = prefManager.getUserName();
 
+        // Seçili kişiler → targetUserIds olarak Firebase'e gönder
+        List<String> targetUserIds = new ArrayList<>(prefManager.getSelectedUsers());
+
+        if (targetUserIds.isEmpty()) {
+            Toast.makeText(this, "Uyarı: Hiç kişi seçilmedi! Kişiler sekmesinden ekleyin.",
+                    Toast.LENGTH_LONG).show();
+        }
+
         String emergencyId = FirebaseManager.getInstance().createEmergency(
-                oderId, userName, emergencyType,
-                currentLocation.getLatitude(), currentLocation.getLongitude()
+                userId, userName, emergencyType,
+                currentLocation.getLatitude(), currentLocation.getLongitude(),
+                null, null, targetUserIds
         );
 
         progressOverlay.setVisibility(View.GONE);
@@ -321,11 +400,13 @@ public class MainActivity extends AppCompatActivity implements EmergencyButton.E
 
         progressOverlay.setVisibility(View.VISIBLE);
 
+        List<String> targetUserIds = new ArrayList<>(prefManager.getSelectedUsers());
+
         String emergencyId = FirebaseManager.getInstance().createEmergency(
                 prefManager.getUserId(), prefManager.getUserName(),
                 Constants.EMERGENCY_CUSTOM,
                 currentLocation.getLatitude(), currentLocation.getLongitude(),
-                pendingCustomTitle, pendingCustomDescription
+                pendingCustomTitle, pendingCustomDescription, targetUserIds
         );
 
         progressOverlay.setVisibility(View.GONE);

@@ -61,8 +61,16 @@ public class AdminActivity extends AppCompatActivity {
     private PreferenceManager prefManager;
     private ValueEventListener usersListener;
     private ValueEventListener codesListener;
+    private ValueEventListener activeEmergencyListener;
+    private ValueEventListener ackListener;
     private Map<String, Marker> userMarkers = new HashMap<>();
     private List<CustomEmergencyCode> customCodes = new ArrayList<>();
+    private List<User> allUsers = new ArrayList<>();
+
+    // Aktif alarm paneli için
+    private LinearLayout alarmStatusLayout;
+    private String currentEmergencyId = null;
+    private List<String> currentTargetIds = new ArrayList<>();
 
     private SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM HH:mm", Locale.getDefault());
 
@@ -86,6 +94,7 @@ public class AdminActivity extends AppCompatActivity {
         loadUsers();
         loadCurrentVersion();
         loadCustomCodes();
+        listenToActiveAlarm();
     }
 
     private void initViews() {
@@ -108,6 +117,13 @@ public class AdminActivity extends AppCompatActivity {
             Toast.makeText(this, "Yenilendi", Toast.LENGTH_SHORT).show();
         });
         btnAddCode.setOnClickListener(v -> showAddCodeDialog());
+
+        // Alarm durum paneli — kullanıcı listesinin üstüne eklenir
+        alarmStatusLayout = new LinearLayout(this);
+        alarmStatusLayout.setOrientation(LinearLayout.VERTICAL);
+        alarmStatusLayout.setVisibility(View.GONE);
+        alarmStatusLayout.setPadding(16, 8, 16, 8);
+        alarmStatusLayout.setBackgroundColor(Color.parseColor("#1A2020"));
 
         tabLayout.addTab(tabLayout.newTab().setText("Kullanıcılar"));
         tabLayout.addTab(tabLayout.newTab().setText("Özel Kodlar"));
@@ -147,10 +163,12 @@ public class AdminActivity extends AppCompatActivity {
                 mapView.getOverlays().clear();
 
                 int count = 0;
+                allUsers.clear();
                 for (DataSnapshot child : snapshot.getChildren()) {
                     User user = child.getValue(User.class);
                     if (user != null) {
                         count++;
+                        allUsers.add(user);
                         addUserToList(user);
                         addUserMarker(user);
                     }
@@ -251,12 +269,34 @@ public class AdminActivity extends AppCompatActivity {
         btnWake.setTextSize(11);
         btnWake.setPadding(8, 4, 8, 4);
         LinearLayout.LayoutParams bParams3 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        bParams3.setMarginEnd(4);
         btnWake.setLayoutParams(bParams3);
         btnWake.setOnClickListener(v -> {
             FirebaseManager.getInstance().sendRemoteCommand(user.getId(), "wake");
             Toast.makeText(this, user.getName() + " cihazına uyandırma gönderildi", Toast.LENGTH_SHORT).show();
         });
         btnRow.addView(btnWake);
+
+        // Test alarmı gönder
+        Button btnTest = new Button(this);
+        btnTest.setText("🧪 Test");
+        btnTest.setTextSize(11);
+        btnTest.setPadding(8, 4, 8, 4);
+        LinearLayout.LayoutParams bParams4 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        btnTest.setLayoutParams(bParams4);
+        btnTest.setOnClickListener(v ->
+                new AlertDialog.Builder(this)
+                        .setTitle("Test Alarmı")
+                        .setMessage(user.getName() + " cihazına test alarmı gönderilsin mi?")
+                        .setPositiveButton("Gönder", (d, w) -> {
+                            FirebaseManager.getInstance().sendTestAlarm(
+                                    user.getId(), prefManager.getUserName());
+                            Toast.makeText(this, "Test alarm gönderildi → " + user.getName(),
+                                    Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("İptal", null)
+                        .show());
+        btnRow.addView(btnTest);
 
         userListLayout.addView(item);
     }
@@ -468,15 +508,123 @@ public class AdminActivity extends AppCompatActivity {
     @Override protected void onResume() { super.onResume(); if (mapView != null) mapView.onResume(); }
     @Override protected void onPause() { super.onPause(); if (mapView != null) mapView.onPause(); }
 
+    /** Aktif alarmı dinler; alarm gelince acknowledgement panelini gösterir */
+    private void listenToActiveAlarm() {
+        activeEmergencyListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (!snapshot.exists()) {
+                    // Alarm bitti — paneli gizle
+                    alarmStatusLayout.setVisibility(View.GONE);
+                    alarmStatusLayout.removeAllViews();
+                    if (ackListener != null && currentEmergencyId != null) {
+                        FirebaseManager.getInstance()
+                                .removeAcknowledgementsListener(currentEmergencyId, ackListener);
+                        ackListener = null;
+                    }
+                    currentEmergencyId = null;
+                    currentTargetIds.clear();
+                    return;
+                }
+
+                com.example.emergencyapp.models.EmergencyEvent event =
+                        snapshot.getValue(com.example.emergencyapp.models.EmergencyEvent.class);
+                if (event == null || !event.isActive()) return;
+
+                currentEmergencyId = event.getId();
+                currentTargetIds = event.getTargetUserIds() != null
+                        ? event.getTargetUserIds() : new ArrayList<>();
+
+                alarmStatusLayout.setVisibility(View.VISIBLE);
+                listenToAcknowledgements(event);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        };
+        FirebaseManager.getInstance().listenToActiveEmergency(activeEmergencyListener);
+    }
+
+    private void listenToAcknowledgements(com.example.emergencyapp.models.EmergencyEvent event) {
+        // Önceki listener'ı temizle
+        if (ackListener != null && currentEmergencyId != null) {
+            FirebaseManager.getInstance()
+                    .removeAcknowledgementsListener(currentEmergencyId, ackListener);
+        }
+
+        ackListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                updateAckPanel(event, snapshot);
+            }
+            @Override public void onCancelled(@NonNull DatabaseError error) {}
+        };
+        FirebaseManager.getInstance().listenToAcknowledgements(event.getId(), ackListener);
+    }
+
+    private void updateAckPanel(com.example.emergencyapp.models.EmergencyEvent event,
+                                DataSnapshot ackSnapshot) {
+        alarmStatusLayout.removeAllViews();
+
+        // Başlık
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("🚨 AKTİF ALARM — " + event.getSenderName()
+                + "  (" + event.getEmergencyTypeText() + ")");
+        tvTitle.setTextColor(Color.parseColor("#FF5252"));
+        tvTitle.setTextSize(13);
+        tvTitle.setPadding(0, 4, 0, 8);
+        alarmStatusLayout.addView(tvTitle);
+
+        int total = currentTargetIds.size();
+        int received = (int) ackSnapshot.getChildrenCount();
+
+        // İlerleme özeti
+        TextView tvSummary = new TextView(this);
+        tvSummary.setText("Teslim: " + received + " / " + total);
+        tvSummary.setTextColor(received == total && total > 0
+                ? Color.parseColor("#69F0AE") : Color.parseColor("#FFD740"));
+        tvSummary.setTextSize(14);
+        tvSummary.setPadding(0, 0, 0, 8);
+        alarmStatusLayout.addView(tvSummary);
+
+        // Kişi bazlı durum listesi
+        Map<String, String> uidToName = new HashMap<>();
+        for (User u : allUsers) uidToName.put(u.getId(), u.getName());
+
+        for (String uid : currentTargetIds) {
+            boolean acked = ackSnapshot.hasChild(uid);
+            String name = uidToName.containsKey(uid) ? uidToName.get(uid) : uid;
+
+            TextView tvRow = new TextView(this);
+            tvRow.setText((acked ? "✅ " : "⏳ ") + name);
+            tvRow.setTextColor(acked ? Color.parseColor("#69F0AE") : Color.parseColor("#FFAB40"));
+            tvRow.setTextSize(12);
+            tvRow.setPadding(8, 2, 0, 2);
+            alarmStatusLayout.addView(tvRow);
+        }
+
+        // Eğer hedef listesi boşsa (eski alarm)
+        if (currentTargetIds.isEmpty()) {
+            TextView tvNote = new TextView(this);
+            tvNote.setText("Bu alarm tüm cihazlara gönderildi (hedef listesi yok)");
+            tvNote.setTextColor(Color.parseColor("#78909C"));
+            tvNote.setTextSize(11);
+            alarmStatusLayout.addView(tvNote);
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Listeners are auto-cleaned by FirebaseDatabase lifecycle, but explicitly clean up
-        FirebaseManager.getInstance().getDatabase()
-                .child(Constants.PATH_USERS).removeEventListener(usersListener);
-        if (codesListener != null) {
+        if (usersListener != null)
+            FirebaseManager.getInstance().getDatabase()
+                    .child(Constants.PATH_USERS).removeEventListener(usersListener);
+        if (codesListener != null)
             FirebaseManager.getInstance().getDatabase()
                     .child(Constants.PATH_CUSTOM_CODES).removeEventListener(codesListener);
-        }
+        if (activeEmergencyListener != null)
+            FirebaseManager.getInstance().removeActiveEmergencyListener(activeEmergencyListener);
+        if (ackListener != null && currentEmergencyId != null)
+            FirebaseManager.getInstance().removeAcknowledgementsListener(currentEmergencyId, ackListener);
     }
 }

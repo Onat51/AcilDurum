@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.emergencyapp.R;
 import com.example.emergencyapp.utils.PreferenceManager;
+import com.google.firebase.auth.FirebaseAuth;
 
 @SuppressLint("CustomSplashScreen")
 public class SplashActivity extends AppCompatActivity {
@@ -21,16 +22,20 @@ public class SplashActivity extends AppCompatActivity {
 
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             PreferenceManager prefManager = new PreferenceManager(this);
+            boolean setupDone = prefManager.isSetupComplete();
+            boolean authValid = FirebaseAuth.getInstance().getCurrentUser() != null;
 
             Intent intent;
-            if (prefManager.isSetupComplete()) {
+            if (setupDone && authValid) {
+                // Her iki koşul sağlandıysa direkt ana ekrana
                 intent = new Intent(this, MainActivity.class);
             } else {
-                intent = new Intent(this, SetupActivity.class);
+                // Firebase Auth varsa ama setup bitmemişse (eski kurulum) → Login'e gönder
+                // Bu şekilde eski kullanıcılar da akıştan geçer
+                intent = new Intent(this, LoginActivity.class);
             }
-
             startActivity(intent);
             finish();
-        }, 2000);
+        }, 1500);
     }
 }

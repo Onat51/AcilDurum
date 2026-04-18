@@ -19,6 +19,7 @@ import com.google.firebase.database.ServerValue;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -32,9 +33,7 @@ public class FirebaseManager {
     }
 
     public static synchronized FirebaseManager getInstance() {
-        if (instance == null) {
-            instance = new FirebaseManager();
-        }
+        if (instance == null) instance = new FirebaseManager();
         return instance;
     }
 
@@ -63,11 +62,8 @@ public class FirebaseManager {
         database.child(Constants.PATH_USERS).child(userId).addListenerForSingleValueEvent(listener);
     }
 
-    // ─── Location History (24h) ─────────────────────────────────────────────────
+    // ─── Location History ──────────────────────────────────────────────────────
 
-    /**
-     * Save a location history point (only called on admin devices).
-     */
     public void saveLocationHistory(String userId, String userName, double lat, double lng) {
         String key = database.child(Constants.PATH_LOCATION_HISTORY).child(userId).push().getKey();
         LocationHistory loc = new LocationHistory(userId, userName, lat, lng);
@@ -77,21 +73,17 @@ public class FirebaseManager {
     public void listenToLocationHistory(String userId, ValueEventListener listener) {
         long cutoff = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(Constants.LOCATION_HISTORY_HOURS);
         database.child(Constants.PATH_LOCATION_HISTORY).child(userId)
-                .orderByChild("timestamp")
-                .startAt(cutoff)
-                .addValueEventListener(listener);
+                .orderByChild("timestamp").startAt(cutoff).addValueEventListener(listener);
     }
 
     public void listenToAllLocationHistories(ValueEventListener listener) {
         database.child(Constants.PATH_LOCATION_HISTORY).addValueEventListener(listener);
     }
 
-    /** Prune entries older than 24h for a user. */
     public void pruneLocationHistory(String userId) {
         long cutoff = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(24);
         database.child(Constants.PATH_LOCATION_HISTORY).child(userId)
-                .orderByChild("timestamp")
-                .endAt(cutoff)
+                .orderByChild("timestamp").endAt(cutoff)
                 .addListenerForSingleValueEvent(new ValueEventListener() {
                     @Override public void onDataChange(@NonNull DataSnapshot snapshot) {
                         for (DataSnapshot child : snapshot.getChildren()) child.getRef().removeValue();
@@ -104,20 +96,37 @@ public class FirebaseManager {
 
     public String createEmergency(String senderId, String senderName,
                                   int emergencyType, double lat, double lng) {
-        return createEmergency(senderId, senderName, emergencyType, lat, lng, null, null);
+        return createEmergency(senderId, senderName, emergencyType, lat, lng, null, null, null);
     }
 
     public String createEmergency(String senderId, String senderName,
                                   int emergencyType, double lat, double lng,
                                   String customTitle, String customDescription) {
+        return createEmergency(senderId, senderName, emergencyType, lat, lng,
+                customTitle, customDescription, null);
+    }
+
+    /**
+     * Acil durum oluşturur ve active_emergency node'una yazar.
+     * targetUserIds: alarmın ulaşması gereken uid listesi. null geçilirse filtre uygulanmaz.
+     */
+    public String createEmergency(String senderId, String senderName,
+                                  int emergencyType, double lat, double lng,
+                                  String customTitle, String customDescription,
+                                  List<String> targetUserIds) {
         String emergencyId = database.child(Constants.PATH_EMERGENCIES).push().getKey();
         EmergencyEvent event = new EmergencyEvent(emergencyId, senderId, senderName,
                 emergencyType, lat, lng);
         if (customTitle != null) event.setCustomTitle(customTitle);
         if (customDescription != null) event.setCustomDescription(customDescription);
+        if (targetUserIds != null && !targetUserIds.isEmpty())
+            event.setTargetUserIds(targetUserIds);
 
         database.child(Constants.PATH_EMERGENCIES).child(emergencyId).setValue(event);
         database.child(Constants.PATH_ACTIVE_EMERGENCY).setValue(event);
+
+        Log.d(TAG, "Alarm oluşturuldu: " + emergencyId + " hedefler=" +
+                (targetUserIds != null ? targetUserIds.size() : "herkese"));
         return emergencyId;
     }
 
@@ -136,16 +145,65 @@ public class FirebaseManager {
 
     // ─── Emergency Location ─────────────────────────────────────────────────────
 
-    public void updateEmergencyLocation(String emergencyId, String oderId,
+    public void updateEmergencyLocation(String emergencyId, String userId,
                                         String userName, double lat, double lng) {
-        LocationData locationData = new LocationData(oderId, userName, lat, lng);
+        LocationData locationData = new LocationData(userId, userName, lat, lng);
         database.child(Constants.PATH_EMERGENCIES).child(emergencyId)
-                .child("userLocations").child(oderId).setValue(locationData);
+                .child("userLocations").child(userId).setValue(locationData);
     }
 
     public void listenToEmergencyLocations(String emergencyId, ValueEventListener listener) {
         database.child(Constants.PATH_EMERGENCIES).child(emergencyId)
                 .child("userLocations").addValueEventListener(listener);
+    }
+
+    // ─── Acknowledgements ──────────────────────────────────────────────────────
+
+    /**
+     * Bir alarmın acknowledgement'larını dinler.
+     * acknowledgements/{emergencyId}/{uid} = timestamp
+     */
+    public void listenToAcknowledgements(String emergencyId, ValueEventListener listener) {
+        database.child(Constants.PATH_ACKNOWLEDGEMENTS).child(emergencyId)
+                .addValueEventListener(listener);
+    }
+
+    public void removeAcknowledgementsListener(String emergencyId, ValueEventListener listener) {
+        database.child(Constants.PATH_ACKNOWLEDGEMENTS).child(emergencyId)
+                .removeEventListener(listener);
+    }
+
+    /**
+     * Kaç kişiye gönderildi, kaçı aldı — admin paneli için özet.
+     * targetUserIds listesini ve acknowledgements snapshot'ını karşılaştırır.
+     */
+    public void getAlarmDeliveryStatus(String emergencyId,
+                                       List<String> targetUserIds,
+                                       DeliveryStatusCallback callback) {
+        database.child(Constants.PATH_ACKNOWLEDGEMENTS).child(emergencyId)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        int received = (int) snapshot.getChildrenCount();
+                        int total = targetUserIds != null ? targetUserIds.size() : 0;
+
+                        // Hangi uid'ler henüz almadı?
+                        java.util.List<String> notReceived = new java.util.ArrayList<>();
+                        if (targetUserIds != null) {
+                            for (String uid : targetUserIds) {
+                                if (!snapshot.hasChild(uid)) notReceived.add(uid);
+                            }
+                        }
+                        callback.onResult(total, received, notReceived);
+                    }
+                    @Override public void onCancelled(@NonNull DatabaseError error) {
+                        callback.onResult(0, 0, new java.util.ArrayList<>());
+                    }
+                });
+    }
+
+    public interface DeliveryStatusCallback {
+        void onResult(int total, int received, java.util.List<String> notReceivedUids);
     }
 
     // ─── Messaging ─────────────────────────────────────────────────────────────
@@ -170,11 +228,10 @@ public class FirebaseManager {
                 .orderByChild("timestamp").addValueEventListener(listener);
     }
 
-    // ─── Custom Emergency Codes (Admin) ────────────────────────────────────────
+    // ─── Custom Emergency Codes ────────────────────────────────────────────────
 
     public void createCustomCode(String code, String title, String description,
                                  ValueEventListener checkListener) {
-        // Check uniqueness first
         database.child(Constants.PATH_CUSTOM_CODES)
                 .orderByChild("code").equalTo(code.toLowerCase().trim())
                 .addListenerForSingleValueEvent(checkListener);
@@ -202,10 +259,6 @@ public class FirebaseManager {
 
     // ─── Remote Commands ────────────────────────────────────────────────────────
 
-    /**
-     * Send a remote command to a specific user device (e.g. wake up / ping).
-     * command: "wake" | "ping" | "restart_service"
-     */
     public void sendRemoteCommand(String targetUserId, String command) {
         Map<String, Object> cmd = new HashMap<>();
         cmd.put("command", command);
@@ -214,7 +267,6 @@ public class FirebaseManager {
         database.child(Constants.PATH_REMOTE_COMMANDS).child(targetUserId).setValue(cmd);
     }
 
-    /** Listen for remote commands directed at this device. */
     public void listenForRemoteCommands(String myUserId, ValueEventListener listener) {
         database.child(Constants.PATH_REMOTE_COMMANDS).child(myUserId).addValueEventListener(listener);
     }
@@ -223,7 +275,66 @@ public class FirebaseManager {
         database.child(Constants.PATH_REMOTE_COMMANDS).child(userId).child("processed").setValue(true);
     }
 
-    // ─── User list / FCM ────────────────────────────────────────────────────────
+    // ─── Admin — şifre yönetimi ────────────────────────────────────────────────
+
+    /**
+     * Admin şifresini Firebase'den doğrular.
+     * Firebase'de: admin_settings/password_hash değeri ile karşılaştırılır.
+     * Geçici basit kontrol: production'da BCrypt veya Firebase Auth kullanılmalı.
+     */
+    public void verifyAdminPassword(String inputPassword, AdminPasswordCallback callback) {
+        database.child("admin_settings").child("password_hash")
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        if (!snapshot.exists()) {
+                            callback.onResult(false);
+                            return;
+                        }
+                        String storedHash = snapshot.getValue(String.class);
+                        // Basit karşılaştırma — ilerleyen sürümde BCrypt ile değiştirilmeli
+                        boolean match = storedHash != null && storedHash.equals(
+                                hashPassword(inputPassword));
+                        callback.onResult(match);
+                    }
+                    @Override public void onCancelled(@NonNull DatabaseError error) {
+                        callback.onResult(false);
+                    }
+                });
+    }
+
+    /** Basit SHA-256 hash (BCrypt ile değiştirilmeli) */
+    private String hashPassword(String password) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(password.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            return password;
+        }
+    }
+
+    public interface AdminPasswordCallback { void onResult(boolean success); }
+
+    // ─── Test Alarm ────────────────────────────────────────────────────────────
+
+    /**
+     * Belirli bir kullanıcıya test alarmı gönderir.
+     * remote_commands/{targetUserId} = { command: "test_alarm", ... }
+     */
+    public void sendTestAlarm(String targetUserId, String fromName) {
+        Map<String, Object> cmd = new HashMap<>();
+        cmd.put("command", "test_alarm");
+        cmd.put("fromName", fromName);
+        cmd.put("timestamp", ServerValue.TIMESTAMP);
+        cmd.put("processed", false);
+        database.child(Constants.PATH_REMOTE_COMMANDS).child(targetUserId).setValue(cmd);
+        Log.d(TAG, "Test alarm gönderildi -> " + targetUserId);
+    }
+
+    // ─── User list ──────────────────────────────────────────────────────────────
 
     public void getAllUsers(ValueEventListener listener) {
         database.child(Constants.PATH_USERS).addListenerForSingleValueEvent(listener);
@@ -246,6 +357,7 @@ public class FirebaseManager {
                             child.getRef().removeValue();
                             database.child(Constants.PATH_MESSAGES).child(emergencyId).removeValue();
                             database.child(Constants.PATH_HINTS).child(emergencyId).removeValue();
+                            database.child(Constants.PATH_ACKNOWLEDGEMENTS).child(emergencyId).removeValue();
                         }
                     }
                     @Override public void onCancelled(@NonNull DatabaseError error) {

@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat;
 
 import com.example.emergencyapp.R;
 import com.example.emergencyapp.activities.EmergencyReceivedActivity;
+import com.example.emergencyapp.activities.MainActivity;
 import com.example.emergencyapp.models.EmergencyEvent;
 import com.example.emergencyapp.utils.Constants;
 import com.example.emergencyapp.utils.PreferenceManager;
@@ -30,20 +31,27 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
+import java.util.List;
 import java.util.Set;
 
 public class EmergencyListenerService extends Service {
     private static final String TAG = "EmergencyListener";
     private static final int FOREGROUND_ID = 2001;
 
+    /** Watchdog'un servis durumunu öğrenmesi için static flag */
+    private static volatile boolean sRunning = false;
+
     private DatabaseReference activeEmergencyRef;
     private ValueEventListener emergencyListener;
     private PreferenceManager prefManager;
     private String lastEmergencyId = null;
 
+    public static boolean isRunning() { return sRunning; }
+
     @Override
     public void onCreate() {
         super.onCreate();
+        sRunning = true;
         Log.d(TAG, "Service created");
         prefManager = new PreferenceManager(this);
         createNotificationChannels();
@@ -54,10 +62,13 @@ public class EmergencyListenerService extends Service {
     private void createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel(
-                    "service_channel", "Arka Plan Servisi", NotificationManager.IMPORTANCE_LOW);
+                    Constants.CHANNEL_SERVICE_ID, "Arka Plan Servisi",
+                    NotificationManager.IMPORTANCE_LOW);
+            serviceChannel.setShowBadge(false);
 
             NotificationChannel emergencyChannel = new NotificationChannel(
-                    Constants.CHANNEL_ID, "Acil Durum Bildirimleri", NotificationManager.IMPORTANCE_HIGH);
+                    Constants.CHANNEL_ID, "Acil Durum Bildirimleri",
+                    NotificationManager.IMPORTANCE_HIGH);
             emergencyChannel.setDescription("Acil durum bildirimleri");
             emergencyChannel.enableVibration(true);
             emergencyChannel.setVibrationPattern(new long[]{0, 500, 200, 500});
@@ -78,16 +89,18 @@ public class EmergencyListenerService extends Service {
     }
 
     private Notification createForegroundNotification() {
-        Intent intent = new Intent(this, com.example.emergencyapp.activities.MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+        Intent intent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                PendingIntent.FLAG_IMMUTABLE);
 
-        return new NotificationCompat.Builder(this, "service_channel")
+        return new NotificationCompat.Builder(this, Constants.CHANNEL_SERVICE_ID)
                 .setContentTitle("Acil Durum Uygulaması")
                 .setContentText("Acil durumlar dinleniyor...")
                 .setSmallIcon(R.drawable.ic_emergency)
                 .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build();
     }
 
@@ -98,35 +111,46 @@ public class EmergencyListenerService extends Service {
         emergencyListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (!snapshot.exists()) {
-                    lastEmergencyId = null;
-                    return;
-                }
+                if (!snapshot.exists()) { lastEmergencyId = null; return; }
 
                 EmergencyEvent event = snapshot.getValue(EmergencyEvent.class);
                 if (event == null || !event.isActive()) return;
 
                 String myId = prefManager.getUserId();
+                if (myId == null) return;
 
-                // Don't alert for our own emergencies
-                if (myId != null && myId.equals(event.getSenderId())) return;
+                // Kendi alarmımıza tepki verme
+                if (myId.equals(event.getSenderId())) return;
 
-                // ─── CONTACT FILTER ──────────────────────────────────────────
-                // Only alert if sender is in our contacts list.
-                // Exception: admin sees everything.
+                // ─── HEDEF KULLANICI FİLTRESİ ─────────────────────────────
                 if (!prefManager.isAdmin()) {
-                    Set<String> contacts = prefManager.getSelectedUsers();
-                    if (contacts.isEmpty() || !contacts.contains(event.getSenderId())) {
-                        Log.d(TAG, "Emergency from non-contact " + event.getSenderId() + " — ignoring");
-                        return;
+                    List<String> targetIds = event.getTargetUserIds();
+                    if (targetIds != null && !targetIds.isEmpty()) {
+                        // Yeni sistem: sunucudaki hedef listesi
+                        if (!targetIds.contains(myId)) {
+                            Log.d(TAG, "Bu alarm bana yönelik değil, atlanıyor");
+                            return;
+                        }
+                    } else {
+                        // Fallback: yerel kişi listesi
+                        Set<String> contacts = prefManager.getSelectedUsers();
+                        if (contacts.isEmpty() || !contacts.contains(event.getSenderId())) {
+                            Log.d(TAG, "Tanımadık kişiden alarm, atlanıyor");
+                            return;
+                        }
                     }
                 }
-                // ─────────────────────────────────────────────────────────────
+                // ──────────────────────────────────────────────────────────
 
-                // Don't show same emergency twice
+                // Aynı alarmı iki kez gösterme
                 if (lastEmergencyId != null && lastEmergencyId.equals(event.getId())) return;
-
                 lastEmergencyId = event.getId();
+
+                Log.d(TAG, "Alarm alındı: " + event.getId() + " sender=" + event.getSenderName());
+
+                // Acknowledgement: "aldım" kaydı Firebase'e yaz
+                writeAcknowledgement(event.getId(), myId);
+
                 showEmergencyNotification(event);
                 openEmergencyActivity(event);
             }
@@ -138,7 +162,15 @@ public class EmergencyListenerService extends Service {
         };
 
         activeEmergencyRef.addValueEventListener(emergencyListener);
-        Log.d(TAG, "Listening for emergencies");
+        Log.d(TAG, "Acil durum dinleyicisi başlatıldı");
+    }
+
+    private void writeAcknowledgement(String emergencyId, String myId) {
+        FirebaseDatabase.getInstance()
+                .getReference(Constants.PATH_ACKNOWLEDGEMENTS)
+                .child(emergencyId)
+                .child(myId)
+                .setValue(System.currentTimeMillis());
     }
 
     private void showEmergencyNotification(EmergencyEvent event) {
@@ -149,7 +181,8 @@ public class EmergencyListenerService extends Service {
 
         Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
 
-        String title = event.getEmergencyType() == Constants.EMERGENCY_CUSTOM && event.getCustomTitle() != null
+        String title = event.getEmergencyType() == Constants.EMERGENCY_CUSTOM
+                && event.getCustomTitle() != null
                 ? "⚡ " + event.getCustomTitle().toUpperCase() + "!"
                 : "🚨 ACİL DURUM!";
 
@@ -175,9 +208,8 @@ public class EmergencyListenerService extends Service {
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         PowerManager.WakeLock wakeLock = pm.newWakeLock(
                 PowerManager.FULL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
-                "EmergencyApp:WakeLock");
-        wakeLock.acquire(10 * 1000L);
-
+                "EmergencyApp:AlarmWakeLock");
+        wakeLock.acquire(10_000L);
         Intent intent = buildEmergencyIntent(event);
         startActivity(intent);
     }
@@ -200,9 +232,9 @@ public class EmergencyListenerService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (activeEmergencyRef != null && emergencyListener != null) {
+        sRunning = false;
+        if (activeEmergencyRef != null && emergencyListener != null)
             activeEmergencyRef.removeEventListener(emergencyListener);
-        }
         Log.d(TAG, "Service destroyed");
     }
 

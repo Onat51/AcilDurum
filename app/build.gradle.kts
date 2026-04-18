@@ -38,41 +38,38 @@ android {
 }
 
 dependencies {
-    // AndroidX - Eski versiyonlar (compileSdk 34 ile uyumlu)
+    // AndroidX
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-
-    // core-ktx KALDIRILDI - sorun yaratan dependency
-    // implementation("androidx.core:core-ktx:1.12.0")
-
-    // Bunun yerine sadece core kullanalım
     implementation("androidx.core:core:1.9.0")
+    implementation("androidx.activity:activity:1.7.2")
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
+    implementation("androidx.cardview:cardview:1.0.0")
 
-    // Firebase
+    // WorkManager — servis watchdog + boot recovery için
+    implementation("androidx.work:work-runtime:2.9.0")
+    // Startup (WorkManager initialization için)
+    implementation("androidx.startup:startup-runtime:1.1.1")
+
+    // Firebase (BOM ile sürüm yönetimi)
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-database")
     implementation("com.google.firebase:firebase-messaging")
-    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-auth")          // Email + Google Auth
+
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+
+    // Konum
+    implementation("com.google.android.gms:play-services-location:21.0.1")
 
     // OpenStreetMap
     implementation("org.osmdroid:osmdroid-android:6.1.17")
 
-    // Location
-    implementation("com.google.android.gms:play-services-location:21.0.1")
-
-    // Retrofit
+    // Network
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-
-    // ViewPager2
-    implementation("androidx.viewpager2:viewpager2:1.0.0")
-
-    // CardView
-    implementation("androidx.cardview:cardview:1.0.0")
-
-    // Activity - eski versiyon
-    implementation("androidx.activity:activity:1.7.2")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

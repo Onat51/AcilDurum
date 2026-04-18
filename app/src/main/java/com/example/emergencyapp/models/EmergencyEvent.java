@@ -1,6 +1,8 @@
 package com.example.emergencyapp.models;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class EmergencyEvent {
@@ -13,11 +15,19 @@ public class EmergencyEvent {
     private long timestamp;
     private boolean isActive;
     private Map<String, LocationData> userLocations;
-    private String customTitle;       // for EMERGENCY_CUSTOM type
-    private String customDescription; // for EMERGENCY_CUSTOM type
+    private String customTitle;
+    private String customDescription;
+
+    /**
+     * Alarmın gönderileceği kişilerin uid listesi.
+     * Gönderici ContactsActivity'deki seçili kişilerini bu listeye yazar.
+     * Alıcı cihazlar bu listeye bakarak "bu alarm bana mı?" diye kontrol eder.
+     */
+    private List<String> targetUserIds;
 
     public EmergencyEvent() {
         userLocations = new HashMap<>();
+        targetUserIds = new ArrayList<>();
     }
 
     public EmergencyEvent(String id, String senderId, String senderName,
@@ -31,6 +41,7 @@ public class EmergencyEvent {
         this.timestamp = System.currentTimeMillis();
         this.isActive = true;
         this.userLocations = new HashMap<>();
+        this.targetUserIds = new ArrayList<>();
     }
 
     public String getEmergencyTypeText() {
@@ -62,7 +73,7 @@ public class EmergencyEvent {
         return senderName + " " + typeText;
     }
 
-    // Getters and Setters
+    // ─── Getters / Setters ──────────────────────────────────────────────────────
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
@@ -95,4 +106,7 @@ public class EmergencyEvent {
 
     public String getCustomDescription() { return customDescription; }
     public void setCustomDescription(String customDescription) { this.customDescription = customDescription; }
+
+    public List<String> getTargetUserIds() { return targetUserIds; }
+    public void setTargetUserIds(List<String> targetUserIds) { this.targetUserIds = targetUserIds; }
 }

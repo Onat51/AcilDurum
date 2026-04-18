@@ -31,16 +31,20 @@ import com.google.firebase.database.ValueEventListener;
 public class LocationService extends Service {
     private static final String TAG = "LocationService";
 
+    private static volatile boolean sRunning = false;
+
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     private PreferenceManager prefManager;
-
     private ValueEventListener remoteCommandListener;
     private long lastHistorySave = 0;
+
+    public static boolean isRunning() { return sRunning; }
 
     @Override
     public void onCreate() {
         super.onCreate();
+        sRunning = true;
         prefManager = new PreferenceManager(this);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
@@ -54,6 +58,7 @@ public class LocationService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     "location_channel", "Konum Servisi", NotificationManager.IMPORTANCE_LOW);
+            channel.setShowBadge(false);
             getSystemService(NotificationManager.class).createNotificationChannel(channel);
         }
     }
@@ -64,11 +69,12 @@ public class LocationService extends Service {
                 .setContentText("Konum paylaşımı aktif")
                 .setSmallIcon(R.drawable.ic_location)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build();
     }
 
     private void startLocationUpdates() {
-        // Frequent updates for admin history recording; normal update otherwise
         int intervalMs = prefManager.isAdmin() ? 15000 : 30000;
 
         LocationRequest locationRequest = new LocationRequest.Builder(
@@ -88,16 +94,13 @@ public class LocationService extends Service {
                 double lat = locationResult.getLastLocation().getLatitude();
                 double lng = locationResult.getLastLocation().getLongitude();
 
-                // Always update current location
                 FirebaseManager.getInstance().updateUserLocation(userId, lat, lng);
 
-                // Save history only on admin devices, with throttle
                 if (prefManager.isAdmin()) {
                     long now = System.currentTimeMillis();
                     if (now - lastHistorySave >= Constants.LOCATION_HISTORY_INTERVAL) {
                         lastHistorySave = now;
                         FirebaseManager.getInstance().saveLocationHistory(userId, userName, lat, lng);
-                        // Also prune old history
                         FirebaseManager.getInstance().pruneLocationHistory(userId);
                     }
                 }
@@ -105,13 +108,13 @@ public class LocationService extends Service {
         };
 
         try {
-            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback,
+                    Looper.getMainLooper());
         } catch (SecurityException e) {
-            Log.e(TAG, "Location permission denied", e);
+            Log.e(TAG, "Konum izni yok", e);
         }
     }
 
-    /** Listen for remote "wake" commands sent from admin panel */
     private void listenForRemoteCommands() {
         String userId = prefManager.getUserId();
         if (userId == null) return;
@@ -127,32 +130,33 @@ public class LocationService extends Service {
                 String command = snapshot.child("command").getValue(String.class);
                 if (command == null) return;
 
-                Log.d(TAG, "Remote command received: " + command);
+                Log.d(TAG, "Remote komut alındı: " + command);
 
                 switch (command) {
                     case "wake":
                     case "restart_service":
-                        // Restart emergency listener service
-                        Intent serviceIntent = new Intent(LocationService.this, EmergencyListenerService.class);
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(serviceIntent);
-                        } else {
-                            startService(serviceIntent);
-                        }
+                        Intent svc = new Intent(LocationService.this, EmergencyListenerService.class);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                            startForegroundService(svc);
+                        else
+                            startService(svc);
                         break;
                     case "ping":
-                        // Update location immediately
                         fusedLocationClient.getLastLocation().addOnSuccessListener(loc -> {
                             if (loc != null) {
                                 String uid = prefManager.getUserId();
-                                if (uid != null) {
-                                    FirebaseManager.getInstance().updateUserLocation(uid, loc.getLatitude(), loc.getLongitude());
-                                }
+                                if (uid != null)
+                                    FirebaseManager.getInstance().updateUserLocation(
+                                            uid, loc.getLatitude(), loc.getLongitude());
                             }
                         });
                         break;
+                    case "test_alarm":
+                        // Test alarmı: yerel bildirim göster (gerçek alarm değil)
+                        showTestAlarmNotification(snapshot.child("fromName")
+                                .getValue(String.class));
+                        break;
                 }
-
                 FirebaseManager.getInstance().markCommandProcessed(userId);
             }
 
@@ -165,20 +169,31 @@ public class LocationService extends Service {
         FirebaseManager.getInstance().listenForRemoteCommands(userId, remoteCommandListener);
     }
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        return START_STICKY;
+    @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
+
+    private void showTestAlarmNotification(String fromName) {
+        android.app.NotificationManager nm =
+                (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        android.app.Notification notif = new androidx.core.app.NotificationCompat
+                .Builder(this, Constants.CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_emergency)
+                .setContentTitle("🧪 Test Alarmı")
+                .setContentText((fromName != null ? fromName : "Admin") + " tarafından test gönderildi")
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setVibrate(new long[]{0, 300, 200, 300})
+                .build();
+        nm.notify(Constants.NOTIFICATION_ID + 10, notif);
+        Log.d(TAG, "Test alarm bildirimi gösterildi");
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (fusedLocationClient != null && locationCallback != null) {
+        sRunning = false;
+        if (fusedLocationClient != null && locationCallback != null)
             fusedLocationClient.removeLocationUpdates(locationCallback);
-        }
     }
 
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
+    @Nullable @Override public IBinder onBind(Intent intent) { return null; }
 }
